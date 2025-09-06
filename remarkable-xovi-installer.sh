@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # XOVI + AppLoader Installation Script for reMarkable Devices (Staged Version)
-# Version: 3.0.2
+# Version: 3.0.4
 # By: https://github.com/wowitsjack/
 # Description: Complete automated installation of XOVI extension framework and AppLoader for rM1 & rM2
 # Split into stages to handle hashtable rebuild connection termination
@@ -90,6 +90,45 @@ show_device_setup() {
     echo
 }
 
+# Function to show WiFi setup instructions before installation
+show_wifi_setup_instructions() {
+    echo
+    highlight "======================================================================="
+    highlight "                    Pre-Installation WiFi Setup"
+    highlight "======================================================================="
+    echo
+    warn "IMPORTANT: Before proceeding with installation, please ensure your device is properly configured."
+    echo
+    info "Step 1: Connect to Home WiFi (BACKUP CONNECTION)"
+    info "• Go to Settings > WiFi on your reMarkable device"
+    info "• Connect to your home WiFi network"
+    info "• This provides a backup connection if USB ethernet fails during installation"
+    info "• Make note of the WiFi IP address shown in Settings > Help > Copyrights and licenses"
+    echo
+    info "Step 2: Disable WiFi for Stable Installation"
+    info "• After confirming WiFi connection works, DISABLE WiFi in Settings > WiFi"
+    info "• This prevents connection switching during the installation process"
+    info "• The installation will use the more reliable USB ethernet connection"
+    echo
+    info "Why this setup is important:"
+    info "• WiFi provides emergency access if something goes wrong"
+    info "• USB ethernet (10.11.99.1) is more stable for the installation process"
+    info "• Disabling WiFi prevents IP address changes during device reboots"
+    echo
+    highlight "======================================================================="
+    echo
+    read -p "Have you connected to WiFi AND then disabled it as instructed? (y/N): " wifi_setup_confirm
+    if [[ ! "$wifi_setup_confirm" =~ ^[Yy]$ ]]; then
+        echo
+        info "Please complete the WiFi setup steps above and run the installation again."
+        info "This setup provides the most stable installation experience."
+        return 1
+    fi
+    echo
+    log "WiFi setup confirmed - proceeding with installation using USB ethernet"
+    return 0
+}
+
 # Function to detect and set device type
 get_device_type() {
     echo
@@ -155,6 +194,41 @@ get_remarkable_ip() {
     log "Using IP address: $REMARKABLE_IP"
 }
 
+# Function to force new IP address entry (for connection retry)
+get_remarkable_ip_retry() {
+    echo
+    warn "Connection failed with IP: $REMARKABLE_IP"
+    info "Please enter a NEW reMarkable device IP address:"
+    info "(Found in Settings > Help > Copyrights and licenses)"
+    while true; do
+        read -p "New IP Address (required): " input_ip
+        if [[ -z "$input_ip" ]]; then
+            error "IP address cannot be empty. Please enter a valid IP address."
+        elif [[ "$input_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            REMARKABLE_IP="$input_ip"
+            log "Updated IP address: $REMARKABLE_IP"
+            break
+        else
+            error "Invalid IP address format. Please enter a valid IP (e.g., 10.11.99.1)"
+        fi
+    done
+}
+
+# Function to force new password entry (for connection retry)
+get_remarkable_password_retry() {
+    echo
+    warn "Password may be incorrect. Please enter a NEW SSH password:"
+    info "(Found in Settings > Help > Copyrights and licenses)"
+    echo -n "New Password: "
+    read -s REMARKABLE_PASSWORD
+    echo
+    
+    if [[ -z "$REMARKABLE_PASSWORD" ]]; then
+        error "Password cannot be empty"
+        exit 1
+    fi
+}
+
 # Function to get reMarkable password securely
 get_remarkable_password() {
     if [[ -z "$REMARKABLE_PASSWORD" ]]; then
@@ -184,6 +258,45 @@ check_sshpass() {
     fi
 }
 
+# Function to check WiFi status and warn user
+# COMMENTED OUT: WiFi blocking functionality disabled per user request
+# check_wifi_status() {
+#     log "Checking device WiFi status..."
+#
+#     # Check if device has WiFi enabled
+#     local wifi_status
+#     wifi_status=$(sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$REMARKABLE_IP "ip route | grep wlan0" 2>/dev/null || echo "")
+#
+#     if [[ -n "$wifi_status" ]]; then
+#         echo
+#         warn "WARNING: WiFi appears to be enabled on your reMarkable device!"
+#         warn "WiFi can interfere with the staged installation process."
+#         echo
+#         info "WiFi interference can cause:"
+#         info "• SSH connection to switch from USB to WiFi IP after reboot"
+#         info "• Stage 2 connection failures due to IP address changes"
+#         info "• Installation interruptions and incomplete setups"
+#         echo
+#         warn "STRONGLY RECOMMENDED: Disable WiFi before proceeding"
+#         echo
+#         info "To disable WiFi on your reMarkable:"
+#         info "1. Go to Settings > WiFi"
+#         info "2. Turn off WiFi completely"
+#         info "3. Ensure only USB connection is active"
+#         echo
+#         read -p "Have you disabled WiFi and want to continue? (y/N): " wifi_confirm
+#         if [[ ! "$wifi_confirm" =~ ^[Yy]$ ]]; then
+#             info "Please disable WiFi and run the script again."
+#             info "This will ensure a stable installation process."
+#             exit 0
+#         fi
+#         echo
+#         log "Proceeding with installation (WiFi warning acknowledged)"
+#     else
+#         log "WiFi disabled - good for stable installation"
+#     fi
+# }
+
 # Function to check reMarkable connectivity and verify password
 check_remarkable_connection() {
     log "Checking reMarkable connectivity..."
@@ -194,6 +307,8 @@ check_remarkable_connection() {
     while [[ $attempt -le $max_attempts ]]; do
         if sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 root@$REMARKABLE_IP "echo 'Connected'" &> /dev/null; then
             log "Successfully connected to reMarkable"
+            # COMMENTED OUT: WiFi status check disabled per user request
+            # check_wifi_status
             return 0
         else
             if [[ $attempt -eq $max_attempts ]]; then
@@ -203,12 +318,20 @@ check_remarkable_connection() {
                 error "  2. SSH is enabled on the device (Settings > Storage > USB web interface > ON)"
                 error "  3. The IP address is correct ($REMARKABLE_IP)"
                 error "  4. Your password is correct"
+                # COMMENTED OUT: WiFi error message disabled per user request
+                # error "  5. WiFi is disabled (can interfere with USB connection)"
                 exit 1
             else
                 warn "Connection attempt $attempt failed. Retrying..."
-                echo -n "Please re-enter your reMarkable SSH password: "
-                read -s REMARKABLE_PASSWORD
                 echo
+                info "The connection may have failed due to:"
+                info "• Incorrect IP address (device may have changed networks)"
+                info "• Incorrect SSH password"
+                info "• Device not ready or SSH disabled"
+                echo
+                info "Let's reconfigure the connection details:"
+                get_remarkable_ip_retry
+                get_remarkable_password_retry
                 ((attempt++))
             fi
         fi
@@ -298,6 +421,13 @@ rm -rf /home/root/xovi 2>/dev/null || true
 
 # Remove shims
 rm -rf /home/root/shims 2>/dev/null || true
+
+# Remove xovi-tripletap completely
+systemctl stop xovi-tripletap 2>/dev/null || true
+systemctl disable xovi-tripletap 2>/dev/null || true
+rm -f /etc/systemd/system/xovi-tripletap.service 2>/dev/null || true
+rm -rf /home/root/xovi-tripletap 2>/dev/null || true
+systemctl daemon-reload 2>/dev/null || true
 
 # Remove any leftover files
 rm -f /home/root/xovi.so 2>/dev/null || true
@@ -409,6 +539,12 @@ download_files() {
         curl -L -o "koreader-remarkable.zip" "https://github.com/koreader/koreader/releases/download/v2025.08/koreader-remarkable-v2025.08.zip"
     fi
     
+    # COMMENTED OUT: Download xovi-tripletap for power button integration (disabled temporarily)
+    # if [[ ! -f "xovi-tripletap-main.zip" ]]; then
+    #     info "Downloading xovi-tripletap (power button integration)..."
+    #     curl -L -o "xovi-tripletap-main.zip" "https://github.com/rmitchellscott/xovi-tripletap/archive/refs/heads/main.zip"
+    # fi
+    
     # Extract packages if not already done (suppress prompts)
     if [[ ! -d "xovi" ]]; then
         info "Extracting XOVI extensions..."
@@ -419,6 +555,12 @@ download_files() {
         info "Extracting AppLoad package..."
         unzip -o -q "appload-arm32.zip"
     fi
+    
+    # COMMENTED OUT: Extract xovi-tripletap (disabled temporarily)
+    # if [[ ! -d "xovi-tripletap-main" ]] && [[ -f "xovi-tripletap-main.zip" ]]; then
+    #     info "Extracting xovi-tripletap..."
+    #     unzip -o -q "xovi-tripletap-main.zip"
+    # fi
     
     cd ..
     log "All files downloaded and prepared"
@@ -511,6 +653,133 @@ configure_appload() {
     "
     
     log "AppLoad extension configured"
+}
+
+# Function to install xovi-tripletap
+install_xovi_tripletap() {
+    log "Installing xovi-tripletap (power button integration)..."
+    
+    # Copy xovi-tripletap files to device
+    sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
+        mkdir -p /home/root/xovi-tripletap
+    "
+    
+    # Copy all necessary files from extracted directory
+    sshpass -p "$REMARKABLE_PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r downloads/xovi-tripletap-main/* root@$REMARKABLE_IP:/home/root/xovi-tripletap/
+    
+    # Setup xovi-tripletap on device
+    sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
+        cd /home/root/xovi-tripletap
+        
+        # Detect device architecture and select appropriate evtest binary
+        ARCH=\$(uname -m)
+        case \$ARCH in
+            armv7l|armhf)
+                EVTEST_ARCH='arm32'
+                ;;
+            aarch64|arm64)
+                EVTEST_ARCH='arm64'
+                ;;
+            armv6l)
+                # reMarkable 1 uses ARM32 evtest
+                EVTEST_ARCH='arm32'
+                ;;
+            *)
+                echo 'Unsupported architecture: \$ARCH, defaulting to arm32'
+                EVTEST_ARCH='arm32'
+                ;;
+        esac
+        
+        # Copy and setup the appropriate evtest binary
+        cp evtest.\$EVTEST_ARCH evtest
+        chmod +x evtest
+        
+        # Make scripts executable
+        chmod +x main.sh
+        chmod +x enable.sh
+        chmod +x uninstall.sh
+        
+        # Create version file
+        echo 'main-\$(date +%Y%m%d)' > version.txt
+        
+        echo 'xovi-tripletap files prepared successfully'
+    "
+    
+    log "xovi-tripletap installation completed"
+}
+
+# Function to enable xovi-tripletap service
+enable_xovi_tripletap() {
+    log "Enabling xovi-tripletap service..."
+    
+    sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
+        cd /home/root/xovi-tripletap
+        
+        # Detect device type for filesystem mounting (rMPP specific)
+        if grep -qE 'reMarkable (Ferrari|Chiappa)' /proc/device-tree/model 2>/dev/null; then
+            echo 'Detected reMarkable Paper Pro family - remounting filesystem...'
+            mount -o remount,rw /
+            umount -R /etc || true
+        fi
+        
+        # Install systemd service
+        cp xovi-tripletap.service /etc/systemd/system/
+        
+        # Reload systemd daemon
+        systemctl daemon-reload
+        
+        # Enable and start the service
+        systemctl enable xovi-tripletap --now
+        
+        echo 'xovi-tripletap service enabled and started successfully'
+    "
+    
+    log "xovi-tripletap service enabled and running"
+}
+
+# Function to install ethernet fix service
+install_ethernet_fix() {
+    log "Fixing USB Ethernet Adapter..."
+    
+    # Get connection details if not already set
+    if [[ -z "$REMARKABLE_IP" ]] || [[ -z "$REMARKABLE_PASSWORD" ]]; then
+        echo
+        info "Device connection required for ethernet fix..."
+        get_remarkable_ip
+        get_remarkable_password
+    fi
+    
+    check_sshpass
+    
+    # Try connecting via current IP first
+    if ! sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "echo 'connected'" &>/dev/null; then
+        error "Cannot connect to device. Make sure WiFi is enabled and device is accessible."
+        return 1
+    fi
+    
+    echo
+    info "Executing ethernet fix on device..."
+    
+    # Execute the ethernet fix directly
+    sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
+        echo 'Loading g_ether module...'
+        modprobe g_ether
+        
+        echo 'Bringing up usb0 interface...'
+        ip link set usb0 up
+        
+        echo 'Configuring IP address...'
+        ip addr add 10.11.99.1/27 dev usb0 2>/dev/null || echo 'IP already configured'
+        
+        echo 'USB Ethernet Fix completed successfully!'
+        echo 'You can now connect via USB at 10.11.99.1'
+    "
+    
+    echo
+    log "USB Ethernet fix completed!"
+    echo
+    info "USB ethernet adapter should now be working at 10.11.99.1"
+    info "Try connecting via USB cable if you were using WiFi before"
 }
 
 # Function to rebuild hashtable with automatic input
@@ -816,6 +1085,7 @@ run_launcher_only() {
     install_extensions  # This must happen BEFORE hashtable rebuild
     setup_shims
     configure_appload
+    # install_xovi_tripletap  # COMMENTED OUT: Install power button integration (disabled temporarily)
     rebuild_hashtable   # This will terminate the connection
     
     # Wait for device to be ready after hashtable rebuild
@@ -823,6 +1093,7 @@ run_launcher_only() {
     
     # Start XOVI services to make AppLoad available
     start_xovi
+    # enable_xovi_tripletap  # COMMENTED OUT: Enable power button service (disabled temporarily)
     restart_ui
     
     # Verify launcher installation
@@ -911,6 +1182,7 @@ run_stage1() {
     install_extensions  # This must happen BEFORE hashtable rebuild
     setup_shims
     configure_appload
+    # install_xovi_tripletap  # COMMENTED OUT: Install power button integration (disabled temporarily)
     rebuild_hashtable   # This will terminate the connection
     
     # Save stage information for Stage 2
@@ -924,7 +1196,22 @@ run_stage1() {
     info "Waiting 30 seconds for the device to fully reboot and load..."
     sleep 30
     echo
-    info "Stage 1 is complete. You can now proceed to Stage 2."
+    highlight "======================================================================"
+    highlight "           IMPORTANT: Stage 2 Instructions"
+    highlight "======================================================================"
+    echo
+    info "Stage 1 is complete. Your device should now have:"
+    info "• XOVI framework installed and running"
+    info "• AppLoad launcher available in the sidebar"
+    # info "• xovi-tripletap power button integration active"  # COMMENTED OUT: disabled temporarily
+    echo
+    warn "BEFORE CONTINUING TO STAGE 2:"
+    # COMMENTED OUT: WiFi warnings disabled per user request
+    # warn "1. Ensure WiFi is still DISABLED on your device"
+    warn "1. Keep the USB cable connected"
+    warn "2. Do not change the device's network settings"
+    echo
+    info "Stage 2 will install KOReader and complete the setup."
     echo
     info "To complete the installation, run:"
     info "  $0 --continue"
@@ -932,7 +1219,13 @@ run_stage1() {
     info "  $0 --stage2"
     info "  or use option 1 (Full Install) from the main menu"
     echo
-    info "Stage 2 will install KOReader and complete the setup."
+    info "If you experience connection issues in Stage 2:"
+    # COMMENTED OUT: WiFi troubleshooting disabled per user request
+    # info "• Check that WiFi is disabled (Settings > WiFi > OFF)"
+    info "• Verify USB cable is securely connected"
+    info "• Ensure device IP is still: $REMARKABLE_IP"
+    echo
+    highlight "======================================================================"
 }
 
 # Stage 2: KOReader installation and final configuration  
@@ -955,6 +1248,7 @@ run_stage2() {
     
     # Stage 2 installation steps
     start_xovi          # This must happen AFTER hashtable rebuild
+    # enable_xovi_tripletap  # COMMENTED OUT: Enable power button service (disabled temporarily)
     install_koreader
     restart_ui
     
@@ -966,7 +1260,7 @@ run_stage2() {
     log "STAGE 2 COMPLETED SUCCESSFULLY!"
     log "=============================================================="
     echo
-    log "KOReader installation completed successfully!"
+    log "XOVI installation completed successfully!"
     log "=============================================================="
     echo
     info "How to access KOReader:"
@@ -1121,7 +1415,7 @@ determine_stage() {
 
 # Function to show usage
 show_usage() {
-    echo "KOReader Installation Script for reMarkable 1 & 2 (Staged Version)"
+    echo "wowitsjack's XOVI Installer for reMarkable 1 & 2 (Staged Version)"
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "Options:"
@@ -1178,18 +1472,35 @@ show_backup_restore_menu() {
     highlight "====================================================================="
     echo
     
-    get_remarkable_ip
-    get_remarkable_password
-    check_sshpass
-    check_remarkable_connection
+    # Only get connection details if not already set, and handle connection gracefully
+    if [[ -z "$REMARKABLE_IP" ]] || [[ -z "$REMARKABLE_PASSWORD" ]]; then
+        info "Device connection not configured yet."
+        echo
+        get_remarkable_ip
+        get_remarkable_password
+    fi
     
+    check_sshpass
+    
+    # Try to connect, but don't fail if it doesn't work
+    local connection_ok=false
+    if check_remarkable_connection 2>/dev/null; then
+        connection_ok=true
+        log "Device connection verified successfully"
+    else
+        warn "Device connection failed - some options may require reconfiguring connection"
+        info "You can still use most backup/restore functions"
+    fi
+    
+    echo
     info "What would you like to do?"
     echo "  1) Create new backup"
     echo "  2) Restore from existing backup"
     echo "  3) List all available backups"
     echo "  4) Delete old backups"
     echo "  5) Uninstall without backup (DANGEROUS)"
-    echo "  6) Return to main menu"
+    echo "  6) Configure device connection"
+    echo "  7) Return to main menu"
     echo
     
     while true; do
@@ -1366,11 +1677,28 @@ show_backup_restore_menu() {
                 break
                 ;;
             6)
+                echo
+                info "Configuring device connection..."
+                REMARKABLE_IP=""
+                REMARKABLE_PASSWORD=""
+                get_remarkable_ip
+                get_remarkable_password
+                check_sshpass
+                if check_remarkable_connection; then
+                    log "Device connection configured successfully!"
+                else
+                    warn "Connection test failed. Please verify your device settings."
+                fi
+                echo
+                read -p "Press Enter to continue..."
+                break
+                ;;
+            7)
                 info "Returning to main menu..."
                 return 0
                 ;;
             *)
-                error "Invalid choice. Please enter 1, 2, 3, 4, 5, or 6."
+                error "Invalid choice. Please enter 1, 2, 3, 4, 5, 6, or 7."
                 ;;
         esac
     done
@@ -1416,6 +1744,7 @@ uninstall_without_backup() {
     info "• XOVI framework and extensions"
     info "• AppLoad launcher"
     info "• KOReader application"
+    # info "• xovi-tripletap power button integration"  # COMMENTED OUT: disabled temporarily
     info "• All configuration files"
     info "• All shim files"
     echo
@@ -1436,14 +1765,37 @@ uninstall_without_backup() {
     
     log "Proceeding with complete uninstall..."
     
-    # Get device connection if not already set
+    # Get device connection if not already set - with proper error handling
     if [[ -z "$REMARKABLE_IP" ]] || [[ -z "$REMARKABLE_PASSWORD" ]]; then
+        echo
+        info "Device connection required for uninstall..."
         get_remarkable_ip
         get_remarkable_password
     fi
     
     check_sshpass
-    check_remarkable_connection
+    
+    # Try to connect, retry if failed
+    local connection_attempts=0
+    while [[ $connection_attempts -lt 3 ]]; do
+        if check_remarkable_connection; then
+            break
+        else
+            ((connection_attempts++))
+            if [[ $connection_attempts -lt 3 ]]; then
+                echo
+                warn "Connection failed. Let's try again with fresh credentials."
+                info "Attempt $((connection_attempts + 1)) of 3"
+                echo
+                get_remarkable_ip_retry
+                get_remarkable_password_retry
+            else
+                error "Failed to connect after 3 attempts. Uninstall cannot proceed."
+                error "Please check your device connection and try again."
+                return 1
+            fi
+        fi
+    done
     
     log "Removing all KOReader and XOVI components..."
     
@@ -1468,6 +1820,16 @@ uninstall_without_backup() {
             rm -rf /home/root/shims 2>/dev/null || true
             echo 'Shims directory removed'
         fi
+        
+        # Remove xovi-tripletap completely
+        systemctl stop xovi-tripletap 2>/dev/null || true
+        systemctl disable xovi-tripletap 2>/dev/null || true
+        rm -f /etc/systemd/system/xovi-tripletap.service 2>/dev/null || true
+        if [[ -d /home/root/xovi-tripletap ]]; then
+            rm -rf /home/root/xovi-tripletap 2>/dev/null || true
+            echo 'xovi-tripletap directory and service removed'
+        fi
+        systemctl daemon-reload 2>/dev/null || true
         
         # Remove any leftover files
         rm -f /home/root/xovi.so 2>/dev/null || true
@@ -1595,26 +1957,26 @@ if ! command -v expect &>/dev/null; then
     warn "  Arch: sudo pacman -S expect"
 fi
 
-# Function to check installation status
+# Function to check installation status (non-blocking with timeout)
 check_installation_status() {
     if [[ -z "$REMARKABLE_IP" ]] || [[ -z "$REMARKABLE_PASSWORD" ]]; then
         return 2  # No connection info
     fi
     
-    # Check if we can connect
-    if ! sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "echo 'connected'" &>/dev/null; then
+    # Quick connection test with very short timeout to avoid hanging
+    if ! timeout 3 sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "echo 'connected'" &>/dev/null; then
         return 3  # Cannot connect
     fi
     
-    # Check XOVI installation
+    # Check XOVI installation with timeout
     local xovi_installed=false
-    if sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "test -d /home/root/xovi" 2>/dev/null; then
+    if timeout 3 sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "test -d /home/root/xovi" 2>/dev/null; then
         xovi_installed=true
     fi
     
-    # Check KOReader installation
+    # Check KOReader installation with timeout
     local koreader_installed=false
-    if sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "test -d /home/root/xovi/exthome/appload/koreader" 2>/dev/null; then
+    if timeout 3 sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "test -d /home/root/xovi/exthome/appload/koreader" 2>/dev/null; then
         koreader_installed=true
     fi
     
@@ -1710,7 +2072,7 @@ show_main_menu() {
         clear
         echo
         highlight "======================================================================"
-        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.0.2"
+        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.0.4"
         highlight "======================================================================"
         echo
         info "This script installs XOVI extension framework and AppLoader on reMarkable devices."
@@ -1723,33 +2085,47 @@ show_main_menu() {
         info "What XOVI + AppLoader provides:"
         info "• XOVI: Powerful extension framework for reMarkable devices"
         info "• AppLoader: Application launcher that appears in your sidebar"
+        # info "• xovi-tripletap: Triple-press power button to start XOVI quickly"  # COMMENTED OUT: disabled temporarily
         info "• Enables installation of custom applications and tools"
         info "• Safe extension management with proper UI integration"
         info "• Foundation for running apps like KOReader"
         echo
         
-        # Check and display current status
+        # Check and display current status (non-blocking)
         info "Checking device status..."
         if [[ -n "$REMARKABLE_IP" ]] && [[ -n "$REMARKABLE_PASSWORD" ]]; then
-            check_installation_status
-            status_code=$?
-            case $status_code in
-                0)
-                    echo -e "   ${GREEN}[OK] Status: KOReader is fully installed and ready${NC}"
-                    ;;
-                1)
-                    echo -e "   ${YELLOW}[WARN] Status: XOVI installed, KOReader missing${NC}"
-                    ;;
-                2)
-                    echo -e "   ${BLUE}[INFO] Status: No device connection configured${NC}"
-                    ;;
-                3)
-                    echo -e "   ${RED}[ERROR] Status: Cannot connect to device${NC}"
-                    ;;
-                4)
-                    echo -e "   ${BLUE}[INFO] Status: KOReader not installed${NC}"
-                    ;;
-            esac
+            # Run status check in background to avoid hanging the menu
+            if check_installation_status; then
+                status_code=$?
+                case $status_code in
+                    0)
+                        echo -e "   ${GREEN}[OK] Status: KOReader is fully installed and ready${NC}"
+                        ;;
+                    1)
+                        echo -e "   ${YELLOW}[WARN] Status: XOVI installed, KOReader missing${NC}"
+                        ;;
+                    2)
+                        echo -e "   ${BLUE}[INFO] Status: No device connection configured${NC}"
+                        ;;
+                    3)
+                        echo -e "   ${RED}[ERROR] Status: Cannot connect to device${NC}"
+                        ;;
+                    4)
+                        echo -e "   ${BLUE}[INFO] Status: KOReader not installed${NC}"
+                        ;;
+                esac
+            else
+                # Handle timeout or other errors gracefully
+                status_code=$?
+                case $status_code in
+                    3)
+                        echo -e "   ${RED}[ERROR] Status: Device connection timeout${NC}"
+                        ;;
+                    *)
+                        echo -e "   ${YELLOW}[WARN] Status: Unable to check device (timeout or error)${NC}"
+                        ;;
+                esac
+            fi
         else
             echo -e "   ${BLUE}[INFO] Status: No device connection configured${NC}"
         fi
@@ -1774,19 +2150,26 @@ show_main_menu() {
         echo "  SYSTEM OPTIONS:"
         echo "     10) Configure Device Connection"
         echo "     11) View System Information"
-        echo "     12) Show Help & Documentation"
-        echo "     13) Exit"
+        echo "     12) Ethernet Fix (USB adapter repair)"
+        echo "     13) Show Help & Documentation"
+        echo "     14) Exit"
         echo
         highlight "======================================================================"
         echo
         
-        read -p "Enter your choice (1-13): " choice
+        read -p "Enter your choice (1-14): " choice
         
         case $choice in
             1)
                 echo
                 info "Starting full KOReader installation (XOVI + AppLoad + KOReader)..."
                 sleep 1
+                
+                # Show WiFi setup instructions before installation
+                if ! show_wifi_setup_instructions; then
+                    continue
+                fi
+                
                 determine_stage
                 case "$CURRENT_STAGE" in
                     "1")
@@ -1825,6 +2208,12 @@ show_main_menu() {
                 echo
                 info "Installing launcher framework only (XOVI + AppLoad, no apps)..."
                 sleep 1
+                
+                # Show WiFi setup instructions before installation
+                if ! show_wifi_setup_instructions; then
+                    continue
+                fi
+                
                 # Run the specialized launcher-only installation
                 run_launcher_only
                 echo
@@ -1912,6 +2301,12 @@ show_main_menu() {
                 echo
                 info "Running Stage 1 (XOVI & Extensions) only..."
                 sleep 1
+                
+                # Show WiFi setup instructions before installation
+                if ! show_wifi_setup_instructions; then
+                    continue
+                fi
+                
                 STAGE1_ONLY=true
                 run_stage1
                 ;;
@@ -1942,7 +2337,7 @@ show_main_menu() {
                 highlight "======================================================================"
                 echo
                 info "Script Information:"
-                info "• Version: KOReader Installation Script v3.0.2"
+                info "• Version: wowitsjack's XOVI Installer v3.0.4"
                 info "• Supported Devices: reMarkable 1 & reMarkable 2"
                 info "• Installation Method: XOVI + AppLoad framework"
                 echo
@@ -1950,6 +2345,7 @@ show_main_menu() {
                 info "• XOVI: Extension manager for reMarkable devices"
                 info "• qt-resource-rebuilder: Required for UI modifications"
                 info "• AppLoad: Application launcher extension"
+                # info "• xovi-tripletap: Power button integration (triple-press to start XOVI)"  # COMMENTED OUT: disabled temporarily
                 info "• KOReader: Advanced document reader application"
                 echo
                 info "System Requirements:"
@@ -1960,24 +2356,33 @@ show_main_menu() {
                 info "File Locations on Device:"
                 info "• XOVI: /home/root/xovi/"
                 info "• Extensions: /home/root/xovi/extensions.d/"
+                # info "• xovi-tripletap: /home/root/xovi-tripletap/"  # COMMENTED OUT: disabled temporarily
                 info "• KOReader: /home/root/xovi/exthome/appload/koreader/"
                 info "• Backups: /home/root/koreader_backup_*/"
                 echo
                 read -p "Press Enter to return to main menu..."
                 ;;
             12)
-                show_usage
+                echo
+                info "Installing USB Ethernet Fix service..."
+                sleep 1
+                install_ethernet_fix
                 echo
                 read -p "Press Enter to return to main menu..."
                 ;;
             13)
+                show_usage
                 echo
-                info "Thank you for using the KOReader installation script!"
+                read -p "Press Enter to return to main menu..."
+                ;;
+            14)
+                echo
+                info "Thank you for using wowitsjack's XOVI installer!"
                 info "If you encounter any issues, please check the backup/restore options."
                 exit 0
                 ;;
             *)
-                error "Invalid choice. Please enter a number between 1-13."
+                error "Invalid choice. Please enter a number between 1-14."
                 sleep 2
                 ;;
         esac

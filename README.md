@@ -1,10 +1,25 @@
 # reMarkable XOVI + AppLoader Installer
 
-**Version 3.0.1** - The complete automated installation toolkit for XOVI extension framework and AppLoader on reMarkable devices.
+**Version 3.0.4** - The complete automated installation toolkit for XOVI extension framework and AppLoader on reMarkable devices.
 
 ![XOVI Installer](image.png)
 
-## What's New in v3.0.1
+## What's New in v3.0.4
+
+- **WiFi Setup Guidance**: Comprehensive WiFi backup connection setup before installation
+- **Installation Safety**: Smart WiFi backup + USB ethernet stability for bulletproof installs
+- **User Education**: Clear step-by-step guidance for optimal installation experience
+- **Improved User Flow**: WiFi setup instructions integrated into all installation options
+
+## What's New in v3.0.3
+
+- **USB Ethernet Fix**: Automatic repair service for missing USB ethernet adapters
+- **Enhanced Connection Handling**: Improved retry logic with forced credential re-entry
+- **Streamlined Installation**: Removed WiFi blocking functionality for better user experience
+- **Menu Improvements**: Added ethernet fix option and better status checking
+- **Stability Improvements**: Non-blocking status checks prevent menu hanging
+
+## What's New in v3.0.1-3.0.2
 
 - **Full reMarkable 1 Support**: Now supports both rM1 and rM2 devices
 - **Smart Stage Detection**: Automatically detects interrupted installations and offers seamless continuation
@@ -37,6 +52,8 @@
 
 ### User Experience
 - **Interactive Menus**: Intuitive command-line interface
+- **WiFi Setup Guidance**: Step-by-step WiFi backup configuration before installation
+- **Installation Safety**: Smart dual-connection setup (WiFi backup + USB primary)
 - **Real-time Progress**: Live status updates throughout installation
 - **Error Recovery**: Robust error handling and recovery options
 - **Command-line Options**: Full automation support for advanced users
@@ -87,6 +104,12 @@
 
 ## Installation Process
 
+### Pre-Installation: WiFi Setup
+- **WiFi Backup Configuration**: Connect to home WiFi as emergency backup
+- **Connection Confirmation**: Verify WiFi connectivity works properly
+- **WiFi Disable**: Disable WiFi for stable USB ethernet installation
+- **Safety Explanation**: Clear guidance on why this setup ensures stability
+
 ### Stage 1: Core Components
 - System validation and device detection
 - Automatic backup creation
@@ -118,10 +141,12 @@ The installer automatically creates backups before any system modifications:
 
 ## Important Notes
 
+- **WiFi Setup**: Follow pre-installation WiFi setup for backup connectivity
+- **Dual Connection**: WiFi provides backup access, USB ethernet provides installation stability
 - **Device Restart Required**: Stage 1 requires a device restart for hashtable rebuild
 - **SSH Access**: Ensure SSH is enabled on your reMarkable device
 - **Backup Safety**: Always maintain backups before system modifications
-- **Network Stability**: Ensure stable network connection during installation
+- **Network Stability**: The installer guides you through optimal network configuration
 
 ## Troubleshooting
 
@@ -134,7 +159,15 @@ ssh root@YOUR_REMARKABLE_IP
 
 # Verify device is responsive
 ping YOUR_REMARKABLE_IP
+
+# If USB ethernet not working, use WiFi temporarily
+ssh root@YOUR_WIFI_IP
 ```
+
+**WiFi Setup Issues**:
+- Follow the pre-installation WiFi guidance carefully
+- Ensure WiFi connection is confirmed before disabling
+- Keep WiFi credentials handy in case USB fails during installation
 
 **Permission Issues**:
 ```bash
