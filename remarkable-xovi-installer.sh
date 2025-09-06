@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # XOVI + AppLoader Installation Script for reMarkable Devices (Staged Version)
-# Version: 3.0.4
+# Version: 3.1.0 - FIXED: No more on-device downloads, bulletproof offline installation
 # By: https://github.com/wowitsjack/
 # Description: Complete automated installation of XOVI extension framework and AppLoader for rM1 & rM2
 # Split into stages to handle hashtable rebuild connection termination
@@ -357,7 +357,7 @@ check_device_architecture() {
     esac
 }
 
-# Function to create comprehensive backup
+# Function to create comprehensive backup - WORKING VERSION (no ./stop during backup)
 create_backup() {
     log "Creating comprehensive system backup..."
     BACKUP_NAME="koreader_backup_$(date +%Y%m%d_%H%M%S)"
@@ -403,7 +403,7 @@ create_backup() {
         systemctl is-active xochitl > /home/root/$BACKUP_NAME/xochitl_status.txt 2>/dev/null || echo 'unknown' > /home/root/$BACKUP_NAME/xochitl_status.txt
         ls -la /home/root/ > /home/root/$BACKUP_NAME/root_directory_before.txt 2>/dev/null || true
         
-        # Create restore script
+        # Create restore script - WORKING VERSION: ./stop ONLY in restore script, not during backup
         cat > /home/root/$BACKUP_NAME/restore.sh << 'RESTORE_EOF'
 #!/bin/bash
 # KOReader Installation Restore Script
@@ -411,13 +411,10 @@ create_backup() {
 
 echo 'Starting KOReader/XOVI removal and system restore...'
 
-# Stop XOVI services without killing USB ethernet
-# Instead of using ./stop (which may disable USB gadgets), stop services individually
-systemctl stop xochitl.service 2>/dev/null || true
-if pidof xochitl; then
-    kill -15 $(pidof xochitl) 2>/dev/null || true
+# Stop XOVI if running (ONLY used in restore script, not during live backup)
+if [[ -f /home/root/xovi/stop ]]; then
+    cd /home/root/xovi && ./stop 2>/dev/null || true
 fi
-# Note: NOT calling ./stop to preserve USB ethernet functionality
 
 # Remove XOVI completely
 rm -rf /home/root/xovi 2>/dev/null || true
@@ -437,7 +434,7 @@ rm -f /home/root/xovi.so 2>/dev/null || true
 rm -f /home/root/xovi-arm32.so 2>/dev/null || true
 rm -f /home/root/install-xovi-for-rm 2>/dev/null || true
 rm -f /home/root/koreader-remarkable.zip 2>/dev/null || true
-rm -f /home/root/extensions-arm32-0.5.0.zip 2>/dev/null || true
+rm -f /home/root/extensions-arm32-*.zip 2>/dev/null || true
 rm -f /home/root/qt-resource-rebuilder.so 2>/dev/null || true
 rm -f /home/root/appload.so 2>/dev/null || true
 rm -f /home/root/qtfb-shim*.so 2>/dev/null || true
@@ -569,20 +566,118 @@ download_files() {
     log "All files downloaded and prepared"
 }
 
-# Function to install XOVI
+# Function to install XOVI - FIXED: Manual setup without broken install-xovi-for-rm
 install_xovi() {
     log "Installing XOVI..."
     
-    # Copy all downloaded files to device
-    sshpass -p "$REMARKABLE_PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null downloads/install-xovi-for-rm downloads/xovi-arm32.so downloads/qt-resource-rebuilder.so downloads/appload.so downloads/qtfb-shim.so downloads/qtfb-shim-32bit.so root@$REMARKABLE_IP:/home/root/
+    # Copy all downloaded files to device (excluding the broken install-xovi-for-rm)
+    sshpass -p "$REMARKABLE_PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null downloads/xovi-arm32.so downloads/qt-resource-rebuilder.so downloads/appload.so downloads/qtfb-shim.so downloads/qtfb-shim-32bit.so root@$REMARKABLE_IP:/home/root/
     
-    # Run XOVI installation
+    # Manual XOVI setup - replaces the broken install-xovi-for-rm script
     sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
         cd /home/root
-        chmod +x install-xovi-for-rm
-        cp xovi-arm32.so xovi.so
-        ./install-xovi-for-rm
-        echo 'XOVI installation script completed'
+        
+        echo 'Preparing XOVI directory structure and start scripts...'
+        
+        # Create XOVI directory structure
+        mkdir -p /home/root/xovi
+        mkdir -p /home/root/xovi/extensions.d
+        mkdir -p /home/root/xovi/exthome
+        
+        # Copy and rename xovi binary
+        cp xovi-arm32.so /home/root/xovi/xovi.so
+        chmod +x /home/root/xovi/xovi.so
+        
+        # Create start script
+        cat > /home/root/xovi/start << 'START_EOF'
+#!/bin/bash
+mkdir -p /etc/systemd/system/xochitl.service.d
+mount -t tmpfs tmpfs /etc/systemd/system/xochitl.service.d
+cat << END > /etc/systemd/system/xochitl.service.d/xovi.conf
+[Service]
+Environment=\"QML_DISABLE_DISK_CACHE=1\"
+Environment=\"QML_XHR_ALLOW_FILE_WRITE=1\"
+Environment=\"QML_XHR_ALLOW_FILE_READ=1\"
+Environment=\"LD_PRELOAD=/home/root/xovi/xovi.so\"
+END
+
+systemctl daemon-reload
+systemctl restart xochitl
+START_EOF
+        
+        # Create debug script
+        cat > /home/root/xovi/debug << 'DEBUG_EOF'
+#!/bin/bash
+systemctl stop xochitl
+QMLDIFF_HASHTAB_CREATE=/home/root/xovi/exthome/qt-resource-rebuilder/hashtab QML_DISABLE_DISK_CACHE=1 LD_PRELOAD=/home/root/xovi/xovi.so /usr/bin/xochitl
+DEBUG_EOF
+        
+        # Create stop script (WARNING: Only use in restore scripts, not live operations!)
+        cat > /home/root/xovi/stop << 'STOP_EOF'
+#!/bin/bash
+# WARNING: This script stops XOVI and disables USB ethernet gadget
+# ONLY use this in restore/uninstall scripts, NEVER during live operations
+umount /etc/systemd/system/xochitl.service.d 2>/dev/null || true
+rmdir /etc/systemd/system/xochitl.service.d 2>/dev/null || true
+systemctl daemon-reload
+systemctl restart xochitl
+STOP_EOF
+        
+        # Create hashtable rebuild script
+        cat > /home/root/xovi/rebuild_hashtable << 'REBUILD_EOF'
+#!/bin/bash
+
+if [[ ! -e '/home/root/xovi/extensions.d/qt-resource-rebuilder.so' ]]; then
+    echo \"Please install qt-resource-rebuilder before updating the hashtable\"
+    exit 1
+fi
+
+echo \"Rebuilding hashtable...\"
+
+# stop systemwide gui process
+systemctl stop xochitl.service
+
+if pidof xochitl; then
+  kill -15 \$(pidof xochitl)
+fi
+
+# make sure the resource-rebuilder folder exists.
+mkdir -p /home/root/xovi/exthome/qt-resource-rebuilder
+
+# remove the actual hashtable
+rm -f /home/root/xovi/exthome/qt-resource-rebuilder/hashtab
+
+echo \"Starting hashtable rebuild process...\"
+echo \"This may take several minutes. Progress will be shown below:\"
+echo \"\"
+
+# start update hashtab process with visible output
+QMLDIFF_HASHTAB_CREATE=/home/root/xovi/exthome/qt-resource-rebuilder/hashtab QML_DISABLE_DISK_CACHE=1 LD_PRELOAD=/home/root/xovi/xovi.so /usr/bin/xochitl 2>&1 | while IFS= read line; do
+  echo \"\$line\"
+  if [[ \"\$line\" == \"[qmldiff]: Hashtab saved to /home/root/xovi/exthome/qt-resource-rebuilder/hashtab\" ]]; then
+    # found the completion line, kill the process
+    kill -15 \$(pidof xochitl)
+  fi
+done
+
+echo \"\"
+echo \"Hashtable rebuild completed. Restarting xochitl service...\"
+
+# wait then restart systemd service
+sleep 5
+systemctl start xochitl.service
+
+echo \"XOVI hashtable rebuild completed successfully!\"
+REBUILD_EOF
+        
+        # Make all scripts executable
+        chmod +x /home/root/xovi/start
+        chmod +x /home/root/xovi/debug
+        chmod +x /home/root/xovi/stop
+        chmod +x /home/root/xovi/rebuild_hashtable
+        
+        echo 'XOVI directory structure and scripts created successfully'
+        echo 'XOVI core setup completed without network dependencies'
     "
     
     log "XOVI installation completed"
@@ -830,6 +925,7 @@ rm -f /home/root/xovi/exthome/qt-resource-rebuilder/hashtab
 
 # start update hashtab process - AUTOMATED VERSION (no user prompts)
 QMLDIFF_HASHTAB_CREATE=/home/root/xovi/exthome/qt-resource-rebuilder/hashtab QML_DISABLE_DISK_CACHE=1 LD_PRELOAD=/home/root/xovi/xovi.so /usr/bin/xochitl 2>&1 | while IFS= read line; do
+  echo \"\$line\"
   if [[ \"\$line\" == \"[qmldiff]: Hashtab saved to /home/root/xovi/exthome/qt-resource-rebuilder/hashtab\" ]]; then
     # found the completion line, kill the process
     kill -15 \$(pidof xochitl)
@@ -846,7 +942,7 @@ REBUILD_EOF
         else
             echo 'rebuild_hashtable script not found, skipping'
         fi
-    " 2>/dev/null || true
+    "
     
     log "Hashtable rebuild initiated (connection will terminate)"
 }
@@ -1806,14 +1902,10 @@ uninstall_without_backup() {
     sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
         echo 'Starting complete KOReader/XOVI removal...'
         
-        # Stop XOVI services without killing USB ethernet
-        # Instead of using ./stop (which may disable USB gadgets), stop services individually
-        systemctl stop xochitl.service 2>/dev/null || true
-        if pidof xochitl; then
-            kill -15 $(pidof xochitl) 2>/dev/null || true
-        fi
-        echo 'XOVI services stopped (USB ethernet preserved)'
-        # Note: NOT calling ./stop to preserve USB ethernet functionality
+        # CRITICAL: Do NOT stop XOVI services during uninstall
+        # The original working script never stops XOVI during uninstall
+        # ./stop is ONLY used in the restore script, not during live operations
+        echo 'Skipping XOVI stop to preserve USB ethernet connectivity'
         
         # Remove XOVI completely
         if [[ -d /home/root/xovi ]]; then
@@ -2078,7 +2170,7 @@ show_main_menu() {
         clear
         echo
         highlight "======================================================================"
-        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.0.4"
+        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.1.0"
         highlight "======================================================================"
         echo
         info "This script installs XOVI extension framework and AppLoader on reMarkable devices."
@@ -2343,7 +2435,7 @@ show_main_menu() {
                 highlight "======================================================================"
                 echo
                 info "Script Information:"
-                info "• Version: wowitsjack's XOVI Installer v3.0.4"
+                info "• Version: wowitsjack's XOVI Installer v3.1.0"
                 info "• Supported Devices: reMarkable 1 & reMarkable 2"
                 info "• Installation Method: XOVI + AppLoad framework"
                 echo
