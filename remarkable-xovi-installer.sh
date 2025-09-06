@@ -889,10 +889,13 @@ run_stage1() {
     info "The device UI has been restarted after hashtable rebuild."
     info "Please wait 30-60 seconds for the device to fully restart."
     echo
+    info "Stage 1 is complete. You can now proceed to Stage 2."
+    echo
     info "To complete the installation, run:"
     info "  $0 --continue"
     info "  or"
     info "  $0 --stage2"
+    info "  or use option 1 (Full Install) from the main menu"
     echo
     info "Stage 2 will install KOReader and complete the setup."
 }
@@ -1456,6 +1459,83 @@ check_installation_status() {
     fi
 }
 
+# Function to check for interrupted installation at startup
+check_startup_state() {
+    # Check for saved stage file first
+    if load_stage; then
+        echo
+        highlight "======================================================================"
+        highlight "           🔄 INTERRUPTED INSTALLATION DETECTED"
+        highlight "======================================================================"
+        echo
+        info "Found previous installation state: Stage $STAGE"
+        echo
+        
+        case "$STAGE" in
+            "1")
+                info "Stage 1 was interrupted (likely during hashtable rebuild)."
+                info "Checking if Stage 1 actually completed..."
+                
+                # Try to connect and check installation state
+                if [[ -n "$REMARKABLE_IP" ]] && [[ -n "$REMARKABLE_PASSWORD" ]]; then
+                    if sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "test -d /home/root/xovi && test -f /home/root/xovi/extensions.d/appload.so" 2>/dev/null; then
+                        echo
+                        log "✅ Stage 1 completed successfully! XOVI and AppLoad are installed."
+                        info "Ready to proceed with Stage 2 (KOReader installation)."
+                        # Update stage file to reflect reality
+                        save_stage "2" "$REMARKABLE_IP" "$REMARKABLE_PASSWORD" "$DEVICE_TYPE" "$BACKUP_NAME"
+                        echo
+                        info "Would you like to continue with Stage 2 now?"
+                        echo "  1) Yes, continue with KOReader installation (Stage 2)"
+                        echo "  2) No, show main menu"
+                        echo
+                        read -p "Enter your choice (1-2): " startup_choice
+                        case $startup_choice in
+                            1)
+                                info "Starting Stage 2..."
+                                run_stage2
+                                exit 0
+                                ;;
+                            2|*)
+                                info "Returning to main menu. Use option 3 (Continue Installation) when ready."
+                                ;;
+                        esac
+                    else
+                        warn "Stage 1 was interrupted and needs to be completed."
+                        info "XOVI installation is incomplete."
+                    fi
+                else
+                    warn "Cannot connect to device to check installation state."
+                    info "You'll need to configure device connection first."
+                fi
+                ;;
+            "2")
+                log "Stage 1 completed. Ready to continue with Stage 2 (KOReader installation)."
+                echo
+                info "Would you like to continue with Stage 2 now?"
+                echo "  1) Yes, continue with KOReader installation (Stage 2)"
+                echo "  2) No, show main menu"
+                echo
+                read -p "Enter your choice (1-2): " startup_choice
+                case $startup_choice in
+                    1)
+                        info "Starting Stage 2..."
+                        run_stage2
+                        exit 0
+                        ;;
+                    2|*)
+                        info "Returning to main menu. Use option 3 (Continue Installation) when ready."
+                        ;;
+                esac
+                ;;
+        esac
+        
+        echo
+        info "Press Enter to continue to main menu..."
+        read
+    fi
+}
+
 # Function to show main menu
 show_main_menu() {
     while true; do
@@ -1539,10 +1619,37 @@ show_main_menu() {
                 sleep 1
                 determine_stage
                 case "$CURRENT_STAGE" in
-                    "1") run_stage1 ;;
-                    "2") run_stage2 ;;
-                    *) error "Invalid stage: $CURRENT_STAGE"; exit 1 ;;
+                    "1")
+                        run_stage1
+                        # After Stage 1 completes successfully, offer to continue to Stage 2
+                        echo
+                        info "Stage 1 completed successfully!"
+                        info "Would you like to continue immediately with Stage 2 (KOReader installation)?"
+                        echo "  1) Yes, continue with Stage 2 now"
+                        echo "  2) No, I'll run it later"
+                        echo
+                        read -p "Enter your choice (1-2): " continue_choice
+                        case $continue_choice in
+                            1)
+                                info "Continuing with Stage 2..."
+                                sleep 2
+                                run_stage2
+                                ;;
+                            2|*)
+                                info "Stage 2 will be available when you restart the script."
+                                info "Run option 1 (Full Install) or option 3 (Continue Installation) to proceed."
+                                ;;
+                        esac
+                        ;;
+                    "2")
+                        run_stage2
+                        ;;
+                    *)
+                        error "Invalid stage: $CURRENT_STAGE"; exit 1
+                        ;;
                 esac
+                echo
+                read -p "Press Enter to return to main menu..."
                 ;;
             2)
                 echo
@@ -1706,6 +1813,9 @@ show_main_menu() {
         esac
     done
 }
+
+# Check for interrupted installations at startup (before showing menu)
+check_startup_state
 
 # Handle special modes or show main menu
 if [[ "$BACKUP_MENU" == true ]]; then
