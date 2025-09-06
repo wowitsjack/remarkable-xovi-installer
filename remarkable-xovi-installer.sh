@@ -219,12 +219,19 @@ check_remarkable_connection() {
 check_device_architecture() {
     log "Checking device architecture..."
     ARCH=$(sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "uname -m")
-    if [[ "$ARCH" != "armv7l" ]]; then
-        error "Unexpected architecture: $ARCH. Expected armv7l for reMarkable 2."
-        error "This script is designed for reMarkable 2 devices."
-        exit 1
-    fi
-    log "Architecture confirmed: $ARCH"
+    case "$ARCH" in
+        "armv7l")
+            log "Architecture confirmed: $ARCH (reMarkable 2)"
+            ;;
+        "armv6l")
+            log "Architecture confirmed: $ARCH (reMarkable 1)"
+            ;;
+        *)
+            error "Unsupported architecture: $ARCH"
+            error "This script supports reMarkable 1 (armv6l) and reMarkable 2 (armv7l) only."
+            exit 1
+            ;;
+    esac
 }
 
 # Function to create comprehensive backup
@@ -1114,7 +1121,7 @@ determine_stage() {
 
 # Function to show usage
 show_usage() {
-    echo "KOReader Installation Script for reMarkable 2 (Staged Version)"
+    echo "KOReader Installation Script for reMarkable 1 & 2 (Staged Version)"
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "Options:"
@@ -1703,13 +1710,15 @@ show_main_menu() {
         clear
         echo
         highlight "======================================================================"
-        highlight "        rM2 XOVI + AppLoader Installation & Management Script v3.0"
+        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.0.1"
         highlight "======================================================================"
         echo
-        info "This script installs XOVI extension framework and AppLoader on reMarkable 2 devices."
+        info "This script installs XOVI extension framework and AppLoader on reMarkable devices."
         echo
-        warn "IMPORTANT: This script is ONLY for reMarkable 2 devices!"
-        warn "Usage on rM1, rmPP, or rmNote is UNSUPPORTED and may damage your device."
+        info "SUPPORTED DEVICES:"
+        info "• reMarkable 1 (rM1) - FULLY SUPPORTED"
+        info "• reMarkable 2 (rM2) - FULLY SUPPORTED"
+        info "• reMarkable Paper Pro (rMPP) - COMING SOON!"
         echo
         info "What XOVI + AppLoader provides:"
         info "• XOVI: Powerful extension framework for reMarkable devices"
@@ -1933,8 +1942,8 @@ show_main_menu() {
                 highlight "======================================================================"
                 echo
                 info "Script Information:"
-                info "• Version: KOReader Installation Script v3.0"
-                info "• Supported Device: reMarkable 2 only"
+                info "• Version: KOReader Installation Script v3.0.1"
+                info "• Supported Devices: reMarkable 1 & reMarkable 2"
                 info "• Installation Method: XOVI + AppLoad framework"
                 echo
                 info "What gets installed:"
@@ -1944,7 +1953,7 @@ show_main_menu() {
                 info "• KOReader: Advanced document reader application"
                 echo
                 info "System Requirements:"
-                info "• reMarkable 2 device with SSH enabled"
+                info "• reMarkable 1 or 2 device with SSH enabled"
                 info "• USB connection to computer"
                 info "• sshpass installed on your system"
                 echo
