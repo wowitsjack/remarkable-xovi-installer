@@ -175,7 +175,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Everyone who helped make rM1 support possible
 
 ---
-
-**Made with care for the reMarkable community**
-
-*For support and updates, visit: https://github.com/yourusername/remarkable-xovi-installer*
