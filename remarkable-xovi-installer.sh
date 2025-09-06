@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # XOVI + AppLoader Installation Script for reMarkable Devices (Staged Version)
-# Version: 3.0.1
+# Version: 3.0.2
 # By: https://github.com/wowitsjack/
 # Description: Complete automated installation of XOVI extension framework and AppLoader for rM1 & rM2
 # Split into stages to handle hashtable rebuild connection termination
@@ -1710,7 +1710,7 @@ show_main_menu() {
         clear
         echo
         highlight "======================================================================"
-        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.0.1"
+        highlight "    reMarkable XOVI + AppLoader Installation & Management Script v3.0.2"
         highlight "======================================================================"
         echo
         info "This script installs XOVI extension framework and AppLoader on reMarkable devices."
@@ -1942,7 +1942,7 @@ show_main_menu() {
                 highlight "======================================================================"
                 echo
                 info "Script Information:"
-                info "• Version: KOReader Installation Script v3.0.1"
+                info "• Version: KOReader Installation Script v3.0.2"
                 info "• Supported Devices: reMarkable 1 & reMarkable 2"
                 info "• Installation Method: XOVI + AppLoad framework"
                 echo
