@@ -4,9 +4,9 @@
 
 ![XOVI Installer](image.png)
 
-## What's New in v3.1.0 - CRITICAL STABILITY FIX
+## What's New in v3.1.0 - Stability Improvements
 
-- **CRITICAL BUG FIX**: Completely replaced broken `install-xovi-for-rm` with manual XOVI setup
+- **Bug Fix**: Completely replaced broken `install-xovi-for-rm` with manual XOVI setup
 - **100% Offline Installation**: No on-device downloads required - works on isolated devices
 - **DNS-Independent**: Eliminates DNS resolution failures that caused installation failures
 - **Bulletproof Setup**: Manual XOVI directory structure creation with all required scripts
