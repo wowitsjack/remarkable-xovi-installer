@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # XOVI + AppLoader Installation Script for reMarkable Devices (Staged Version)
-# Version: 3.0
+# Version: 3.0.1
 # By: https://github.com/wowitsjack/
 # Description: Complete automated installation of XOVI extension framework and AppLoader
 # Split into stages to handle hashtable rebuild connection termination
+# Supports: reMarkable 1 & reMarkable 2 (rMPP coming soon!)
 
 set -e  # Exit on any error
 
@@ -89,18 +90,46 @@ show_device_setup() {
     echo
 }
 
-# Function to set device type (hardcoded for rM2)
+# Function to detect and set device type
 get_device_type() {
-    DEVICE_TYPE="rM2"
     echo
     highlight "===================================================================="
-    highlight "        reMarkable 2 KOReader Installation Script"
+    highlight "   reMarkable XOVI + AppLoader Installation Script v3.0.1"
     highlight "===================================================================="
     echo
-    warn "This script is ONLY tested and supported on reMarkable 2 devices."
-    warn "Usage on other devices (rM1, rmPP, rmNote) is UNTESTED and unsupported."
+    info "Detecting device architecture..."
+    
+    # Auto-detect device type based on architecture
+    if [[ -n "$REMARKABLE_IP" ]] && [[ -n "$REMARKABLE_PASSWORD" ]]; then
+        local arch_result
+        arch_result=$(sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "uname -m" 2>/dev/null || echo "unknown")
+        
+        case "$arch_result" in
+            "armv7l")
+                DEVICE_TYPE="rM2"
+                info "Detected: reMarkable 2 (armv7l architecture)"
+                ;;
+            "armv6l")
+                DEVICE_TYPE="rM1"
+                info "Detected: reMarkable 1 (armv6l architecture)"
+                ;;
+            *)
+                warn "Unable to auto-detect device type. Defaulting to rM2."
+                DEVICE_TYPE="rM2"
+                ;;
+        esac
+    else
+        warn "No connection configured yet. Defaulting to rM2."
+        DEVICE_TYPE="rM2"
+    fi
+    
     echo
-    info "Proceeding with reMarkable 2 installation..."
+    info "Supported Devices:"
+    info "• reMarkable 1 (rM1) - SUPPORTED"
+    info "• reMarkable 2 (rM2) - SUPPORTED"
+    info "• reMarkable Paper Pro (rMPP) - COMING SOON!"
+    echo
+    info "Proceeding with $DEVICE_TYPE installation..."
     log "Device type set: $DEVICE_TYPE"
 }
 
@@ -338,8 +367,6 @@ show_restore_options() {
     info "  • Remove all shim files and extensions"
     info "  • Restore any previous installations (if they existed)"
     info "  • Restart the reMarkable UI for a clean state"
-    echo
-    warn "The restore script will leave NO TRACE of this installation!"
     echo
 }
 
@@ -887,7 +914,8 @@ run_stage1() {
     log "======================================================================="
     echo
     info "The device UI has been restarted after hashtable rebuild."
-    info "Please wait 30-60 seconds for the device to fully restart."
+    info "Waiting 30 seconds for the device to fully reboot and load..."
+    sleep 30
     echo
     info "Stage 1 is complete. You can now proceed to Stage 2."
     echo
@@ -1310,7 +1338,7 @@ show_backup_restore_menu() {
                 ;;
             5)
                 echo
-                warn "⚠️  DANGEROUS OPERATION: Uninstall without backup"
+                warn "DANGEROUS OPERATION: Uninstall without backup"
                 echo
                 warn "This option will PERMANENTLY REMOVE all KOReader and XOVI components"
                 warn "WITHOUT creating any backup. This action CANNOT be undone!"
@@ -1598,7 +1626,7 @@ check_startup_state() {
     if load_stage; then
         echo
         highlight "======================================================================"
-        highlight "           🔄 INTERRUPTED INSTALLATION DETECTED"
+        highlight "           INTERRUPTED INSTALLATION DETECTED"
         highlight "======================================================================"
         echo
         info "Found previous installation state: Stage $STAGE"
@@ -1613,7 +1641,7 @@ check_startup_state() {
                 if [[ -n "$REMARKABLE_IP" ]] && [[ -n "$REMARKABLE_PASSWORD" ]]; then
                     if sshpass -p "$REMARKABLE_PASSWORD" ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "test -d /home/root/xovi && test -f /home/root/xovi/extensions.d/appload.so" 2>/dev/null; then
                         echo
-                        log "✅ Stage 1 completed successfully! XOVI and AppLoad are installed."
+                        log "Stage 1 completed successfully! XOVI and AppLoad are installed."
                         info "Ready to proceed with Stage 2 (KOReader installation)."
                         # Update stage file to reflect reality
                         save_stage "2" "$REMARKABLE_IP" "$REMARKABLE_PASSWORD" "$DEVICE_TYPE" "$BACKUP_NAME"
