@@ -1,8 +1,17 @@
 # reMarkable XOVI + AppLoader Installer
 
-**Version 3.0.4** - The complete automated installation toolkit for XOVI extension framework and AppLoader on reMarkable devices.
+**Version 3.1.0** - The complete automated installation toolkit for XOVI extension framework and AppLoader on reMarkable devices.
 
 ![XOVI Installer](image.png)
+
+## What's New in v3.1.0 - CRITICAL STABILITY FIX
+
+- **CRITICAL BUG FIX**: Completely replaced broken `install-xovi-for-rm` with manual XOVI setup
+- **100% Offline Installation**: No on-device downloads required - works on isolated devices
+- **DNS-Independent**: Eliminates DNS resolution failures that caused installation failures
+- **Bulletproof Setup**: Manual XOVI directory structure creation with all required scripts
+- **Enhanced Progress**: Real-time hashtable rebuild progress output
+- **USB Ethernet Safe**: Proper handling of USB gadget drivers during installation
 
 ## What's New in v3.0.4
 
@@ -70,7 +79,7 @@
 
 1. **Download the installer**:
    ```bash
-   git clone https://github.com/yourusername/remarkable-xovi-installer.git
+   git clone https://github.com/wowitsjack/remarkable-xovi-installer.git
    cd remarkable-xovi-installer
    chmod +x remarkable-xovi-installer.sh
    ```
@@ -141,12 +150,13 @@ The installer automatically creates backups before any system modifications:
 
 ## Important Notes
 
+- **Offline Operation**: v3.1.0+ works completely offline - no internet required on device
 - **WiFi Setup**: Follow pre-installation WiFi setup for backup connectivity
 - **Dual Connection**: WiFi provides backup access, USB ethernet provides installation stability
 - **Device Restart Required**: Stage 1 requires a device restart for hashtable rebuild
 - **SSH Access**: Ensure SSH is enabled on your reMarkable device
 - **Backup Safety**: Always maintain backups before system modifications
-- **Network Stability**: The installer guides you through optimal network configuration
+- **Network Reliability**: Manual XOVI setup eliminates network-dependent installation failures
 
 ## Troubleshooting
 
