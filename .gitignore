@@ -1,0 +1,14 @@
+# Ignore downloads folder with binary files
+downloads/
+
+# Ignore temporary files
+*.tmp
+*.log
+.DS_Store
+
+# Ignore stage files
+.koreader_install_stage
+
+# Ignore backup files
+*.bak
+*~
