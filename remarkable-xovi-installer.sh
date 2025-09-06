@@ -1153,11 +1153,12 @@ show_backup_restore_menu() {
     echo "  2) Restore from existing backup"
     echo "  3) List all available backups"
     echo "  4) Delete old backups"
-    echo "  5) Return to main menu"
+    echo "  5) Uninstall without backup (DANGEROUS)"
+    echo "  6) Return to main menu"
     echo
     
     while true; do
-        read -p "Enter your choice (1-5): " choice
+        read -p "Enter your choice (1-6): " choice
         case $choice in
             1)
                 log "Creating new backup..."
@@ -1216,6 +1217,8 @@ show_backup_restore_menu() {
                 else
                     warn "No backups found on your device."
                     info "Create a backup first with option 1, or run a full installation to automatically create one."
+                    echo
+                    read -p "Press Enter to continue..."
                 fi
                 break
                 ;;
@@ -1236,6 +1239,9 @@ show_backup_restore_menu() {
                     done <<< "$backup_list"
                 else
                     warn "No backups found on your device."
+                    info "Create a backup first with option 1, or run a full installation to automatically create one."
+                    echo
+                    read -p "Press Enter to continue..."
                 fi
                 break
                 ;;
@@ -1296,15 +1302,40 @@ show_backup_restore_menu() {
                     done
                 else
                     warn "No backups found on your device."
+                    info "Use option 5 to uninstall without requiring a backup, or create one with option 1 first."
+                    echo
+                    read -p "Press Enter to continue..."
                 fi
                 break
                 ;;
             5)
+                echo
+                warn "⚠️  DANGEROUS OPERATION: Uninstall without backup"
+                echo
+                warn "This option will PERMANENTLY REMOVE all KOReader and XOVI components"
+                warn "WITHOUT creating any backup. This action CANNOT be undone!"
+                echo
+                info "Use this only if:"
+                info "• You don't care about preserving any data"
+                info "• You want to completely clean your device"
+                info "• No backups exist and you want to force removal"
+                echo
+                read -p "Do you want to proceed with dangerous uninstall? (y/N): " dangerous_confirm
+                if [[ "$dangerous_confirm" =~ ^[Yy]$ ]]; then
+                    uninstall_without_backup
+                    echo
+                    read -p "Press Enter to return to menu..."
+                else
+                    info "Dangerous uninstall cancelled."
+                fi
+                break
+                ;;
+            6)
                 info "Returning to main menu..."
                 return 0
                 ;;
             *)
-                error "Invalid choice. Please enter 1, 2, 3, 4, or 5."
+                error "Invalid choice. Please enter 1, 2, 3, 4, 5, or 6."
                 ;;
         esac
     done
@@ -1335,6 +1366,108 @@ restore_from_backup() {
     log "Restore completed successfully!"
     clear_stage  # Clear any saved stage information
     exit 0
+}
+
+# Function to uninstall without backup (complete removal)
+uninstall_without_backup() {
+    log "======================================================================="
+    log "COMPLETE UNINSTALL: Removing XOVI and KOReader (WITHOUT BACKUP)"
+    log "======================================================================="
+    
+    warn "WARNING: This will completely remove KOReader and XOVI from your device!"
+    warn "This operation CANNOT be undone and NO BACKUP will be created!"
+    echo
+    warn "All installed components will be permanently deleted:"
+    info "• XOVI framework and extensions"
+    info "• AppLoad launcher"
+    info "• KOReader application"
+    info "• All configuration files"
+    info "• All shim files"
+    echo
+    
+    read -p "Are you absolutely sure you want to proceed? (yes/NO): " confirm
+    if [[ ! "$confirm" == "yes" ]]; then
+        info "Uninstall cancelled. No changes were made."
+        return 0
+    fi
+    
+    echo
+    warn "Last chance to cancel - this will permanently remove everything!"
+    read -p "Type 'DELETE' to confirm permanent removal: " final_confirm
+    if [[ ! "$final_confirm" == "DELETE" ]]; then
+        info "Uninstall cancelled. No changes were made."
+        return 0
+    fi
+    
+    log "Proceeding with complete uninstall..."
+    
+    # Get device connection if not already set
+    if [[ -z "$REMARKABLE_IP" ]] || [[ -z "$REMARKABLE_PASSWORD" ]]; then
+        get_remarkable_ip
+        get_remarkable_password
+    fi
+    
+    check_sshpass
+    check_remarkable_connection
+    
+    log "Removing all KOReader and XOVI components..."
+    
+    # Run the complete removal script
+    sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
+        echo 'Starting complete KOReader/XOVI removal...'
+        
+        # Stop XOVI if running
+        if [[ -f /home/root/xovi/stop ]]; then
+            cd /home/root/xovi && ./stop 2>/dev/null || true
+            echo 'XOVI services stopped'
+        fi
+        
+        # Remove XOVI completely
+        if [[ -d /home/root/xovi ]]; then
+            rm -rf /home/root/xovi 2>/dev/null || true
+            echo 'XOVI directory removed'
+        fi
+        
+        # Remove shims
+        if [[ -d /home/root/shims ]]; then
+            rm -rf /home/root/shims 2>/dev/null || true
+            echo 'Shims directory removed'
+        fi
+        
+        # Remove any leftover files
+        rm -f /home/root/xovi.so 2>/dev/null || true
+        rm -f /home/root/xovi-arm32.so 2>/dev/null || true
+        rm -f /home/root/install-xovi-for-rm 2>/dev/null || true
+        rm -f /home/root/koreader-remarkable.zip 2>/dev/null || true
+        rm -f /home/root/extensions-arm32-*.zip 2>/dev/null || true
+        rm -f /home/root/qt-resource-rebuilder.so 2>/dev/null || true
+        rm -f /home/root/appload.so 2>/dev/null || true
+        rm -f /home/root/qtfb-shim*.so 2>/dev/null || true
+        
+        # Remove any KOReader directories that might exist
+        rm -rf /home/root/koreader 2>/dev/null || true
+        
+        # Restart UI to ensure clean state
+        systemctl restart xochitl
+        
+        echo 'Complete uninstall finished!'
+        echo 'All KOReader and XOVI components have been permanently removed.'
+    "
+    
+    # Clear any saved stage information
+    clear_stage
+    
+    log "======================================================================="
+    log "COMPLETE UNINSTALL SUCCESSFUL!"
+    log "======================================================================="
+    echo
+    info "All KOReader and XOVI components have been permanently removed."
+    info "Your device has been restored to its original state."
+    echo
+    info "The reMarkable UI has been restarted to ensure clean operation."
+    info "No traces of the installation remain on your device."
+    
+    return 0
 }
 
 # Function to create backup only
