@@ -3,7 +3,7 @@
 # XOVI + AppLoader Installation Script for reMarkable Devices (Staged Version)
 # Version: 3.0.1
 # By: https://github.com/wowitsjack/
-# Description: Complete automated installation of XOVI extension framework and AppLoader
+# Description: Complete automated installation of XOVI extension framework and AppLoader for rM1 & rM2
 # Split into stages to handle hashtable rebuild connection termination
 # Supports: reMarkable 1 & reMarkable 2 (rMPP coming soon!)
 
