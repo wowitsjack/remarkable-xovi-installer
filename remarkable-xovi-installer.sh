@@ -411,10 +411,13 @@ create_backup() {
 
 echo 'Starting KOReader/XOVI removal and system restore...'
 
-# Stop XOVI if running
-if [[ -f /home/root/xovi/stop ]]; then
-    cd /home/root/xovi && ./stop 2>/dev/null || true
+# Stop XOVI services without killing USB ethernet
+# Instead of using ./stop (which may disable USB gadgets), stop services individually
+systemctl stop xochitl.service 2>/dev/null || true
+if pidof xochitl; then
+    kill -15 $(pidof xochitl) 2>/dev/null || true
 fi
+# Note: NOT calling ./stop to preserve USB ethernet functionality
 
 # Remove XOVI completely
 rm -rf /home/root/xovi 2>/dev/null || true
@@ -1803,11 +1806,14 @@ uninstall_without_backup() {
     sshpass -p "$REMARKABLE_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$REMARKABLE_IP "
         echo 'Starting complete KOReader/XOVI removal...'
         
-        # Stop XOVI if running
-        if [[ -f /home/root/xovi/stop ]]; then
-            cd /home/root/xovi && ./stop 2>/dev/null || true
-            echo 'XOVI services stopped'
+        # Stop XOVI services without killing USB ethernet
+        # Instead of using ./stop (which may disable USB gadgets), stop services individually
+        systemctl stop xochitl.service 2>/dev/null || true
+        if pidof xochitl; then
+            kill -15 $(pidof xochitl) 2>/dev/null || true
         fi
+        echo 'XOVI services stopped (USB ethernet preserved)'
+        # Note: NOT calling ./stop to preserve USB ethernet functionality
         
         # Remove XOVI completely
         if [[ -d /home/root/xovi ]]; then
